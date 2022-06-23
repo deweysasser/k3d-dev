@@ -1,5 +1,9 @@
 #!/bin/bash
 
+tmp=/tmp/k3d-dev.$$
+mkdir -p $tmp
+trap 'rm -rf $tmp' 0
+
 # find_open_port locates an open port from a given starting point (and optional end point).
 # It relies on the 'nc' command to do port operations
 find_open_port() {
@@ -19,10 +23,11 @@ find_open_port() {
 verify() {
   message="$1"; shift
   echo -n "$message..."
-  if eval "$@" > /dev/null 2>&1 ; then
+  if eval "$@" > $tmp/output.txt 2>&1 ; then
     echo SUCCESS
   else
     echo FAIL
+    awk '{print "  "; print}' $tmp/output.txt
     exit 1
   fi
 }
@@ -76,9 +81,12 @@ EOF
 chmod +x "use-${NAME}"
 
 # Test that everything is working as expected
-verify "Pull test image" docker pull nginx:latest
-verify "Tag test image for local registry" docker tag nginx:latest "${REGISTRY_ADDRESS}/nginx"
-verify "Push test image to local registry" docker push "${REGISTRY_ADDRESS}/nginx"
+verify "Pull test image" docker pull busybox:latest
+verify "Tag test image for local registry" docker tag busybox:latest "${REGISTRY_ADDRESS}/busybox"
+verify "Push test image to local registry" docker push "${REGISTRY_ADDRESS}/busybox"
+verify "Creating local pod" kubectl run -l "local-dev=test" --image ${REGISTRY_ADDRESS}/busybox --command busybox-$$ sleep 1d
+verify "Waiting for local pod readiness" kubectl wait --for=condition=ready pod busybox-$$
+verify "Deleting test pods" kubectl delete pod busybox-$$ --grace-period=1
 
 cat <<EOF
 
