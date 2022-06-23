@@ -10,11 +10,11 @@ Usage
 
 To create a development registry and cluster, run:
 
-`./setup`
+`./setup-local-dev`
 
 To destroy both, run
 
-`./destroy
+`./destroy-local-dev`
 
 Dependencies
 ============
