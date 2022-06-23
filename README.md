@@ -1,8 +1,30 @@
-Base Repository
-===============
+k3d-cev
+=======
 
-This is a basic GIT repository with preconfigure .gitignore and
-.gitattributes to something reasonable. use as a base, merge in to
-your existing repository, or just cut-and-paste to use.
+Automation/support for setting up a local k3d-dev cluster, with local registry, for building and
+testing containers against a local kubernetes cluster.
 
-See [ToolUse.md] for more information.
+
+Usage
+=====
+
+To create a development registry and cluster, run:
+
+`./setup`
+
+To destroy both, run
+
+`./destroy
+
+Dependencies
+============
+
+* Rancher's k3d` (https://k3d.io/)
+* A local Docker (https://www.docker.com/)
+* BSD compliant `sed` and `nc`
+
+Platforms
+=========
+
+This has been tested on MacOS 12.4. It should substantially work on other platforms but has yet to
+be tested.

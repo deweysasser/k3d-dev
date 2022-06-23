@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# find_open_port locates an open port from a given starting point (and optional end point).
+# It relies on the 'nc' command to do port operations
+find_open_port() {
+  start=$1
+  end=${2:-$((start + 1000))}
+
+  for port in $(seq "$start" "$end") ; do
+    if ! echo | nc  localhost "$port" >/dev/null 2>&1; then
+      echo "$port"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+verify() {
+  message="$1"; shift
+  echo -n "$message..."
+  if eval "$@" > /dev/null 2>&1 ; then
+    echo SUCCESS
+  else
+    echo FAIL
+    exit 1
+  fi
+}
+
+NAME=$(basename "$(pwd)")
+REGISTRY_NAME=local-registry
+
+if [ ! -r /var/run/docker.sock ] ; then
+    echo "Local docker not running"
+    exit 1
+fi
+
+set -u
+unset KUBECONFIG
+
+# Create or locate the registry
+if k3d registry list ${REGISTRY_NAME} > /dev/null 2>&1 ; then
+  # grab the port
+  REGISTRY_PORT=$(k3d registry list ${REGISTRY_NAME} -o json | jq -r '.[].portMappings | ."5000/tcp" | .[].HostPort')
+  echo Using existing registry ${REGISTRY_NAME}
+else
+  REGISTRY_PORT=$(find_open_port 5001)
+  verify "Creating Registry k3d-${REGISTRY_NAME}" k3d registry create ${REGISTRY_NAME} --port "${REGISTRY_PORT}"
+fi
+
+REGISTRY_ADDRESS=k3d-${REGISTRY_NAME}:${REGISTRY_PORT}
+
+# Create the cluster
+if k3d cluster list "${NAME}"  > /dev/null 2>&1; then
+  echo "Using existing cluster ${NAME}"
+else
+   verify "Creating cluster ${NAME}" k3d cluster create "${NAME}" --registry-use "${REGISTRY_NAME}:${REGISTRY_PORT}"
+fi
+
+if grep -q  ${REGISTRY_NAME} /etc/hosts; then
+  echo "k3d-${REGISTRY_NAME} already configured in /etc/hosts"
+else
+  echo "Adding registry name to /etc/hosts"
+  verify "adding registry name to /etc/hosts" sudo sed -i .bak -e "/^127.0.0.1/s/$/ k3d-${REGISTRY_NAME}/" /etc/hosts
+fi
+
+
+# Create the settings file
+cat > "use-${NAME}" <<EOF
+unset KUBECONFIG
+export SKAFFOLD_DEFAULT_REPO=${REGISTRY_ADDRESS}
+export REGISTRY_NAME=${REGISTRY_NAME}
+export K3D_DEV_CLUSTER_NAME=${NAME}
+EOF
+
+chmod +x "use-${NAME}"
+
+# Test that everything is working as expected
+verify "Pull test image" docker pull nginx:latest
+verify "Tag test image for local registry" docker tag nginx:latest "${REGISTRY_ADDRESS}/nginx"
+verify "Push test image to local registry" docker push "${REGISTRY_ADDRESS}/nginx"
+
+cat <<EOF
+
+Registry ${REGISTRY_ADDRESS} and cluster ${NAME} created and tested.
+source the $(PWD)/use-${NAME} file to configure environment to properly use this cluster
+EOF
+
+
+if [ -f skaffold.yml ] ; then
+    echo "Using skaffold to run"
+    . use-${NAME}
+    skaffold run
+fi

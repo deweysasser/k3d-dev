@@ -1,0 +1,9 @@
+#!/bin/bash
+
+NAME=$(basename "$(pwd)")
+
+source use-${NAME}
+
+k3d cluster delete ${K3D_DEV_CLUSTER_NAME}
+
+echo "The local registry may be shared, so it is not destroyed"
